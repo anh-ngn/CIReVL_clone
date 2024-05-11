@@ -238,7 +238,10 @@ def main():
     blip_model = None
     if preload_dict["captions"] is None or not os.path.exists(preload_dict["captions"]):
         blip_model, vis_processors, _ = lavis.models.load_model_and_preprocess(
-            name=args.blip, model_type="vicuna7b", is_eval=True, device=device
+            name="blip2_vicuna_instruct",
+            model_type="vicuna7b",
+            is_eval=True,
+            device=device,
         )
     else:
         import omegaconf
