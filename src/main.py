@@ -52,8 +52,8 @@ def main():
     parser.add_argument(
         "--blip",
         type=str,
-        default="blip2_vicuna_instruct",
-        choices=["blip2_vicuna_instruct"],
+        default="blip_caption",
+        choices=["blip_caption"],
         help="BLIP Image Caption Model to use.",
     )
     # Dataset Arguments ['dress', 'toptee', 'shirt']
