@@ -19,6 +19,7 @@ def collate_fn(batch):
     :param batch: input_batch
     :return: output_batch = input_batch - None_values
     '''
+    print("break point 21")
     batch = list(filter(lambda x: x is not None, batch))
     return torch.utils.data.dataloader.default_collate(batch)
 
@@ -42,7 +43,8 @@ class TargetPad:
         actual_ratio = max(w, h) / min(w, h)
         if actual_ratio < self.target_ratio:  # check if the ratio is above or below the target ratio
             return image
-        scaled_max_wh = max(w, h) / self.target_ratio  # rescale the pad to match the target ratio
+        # rescale the pad to match the target ratio
+        scaled_max_wh = max(w, h) / self.target_ratio
         hp = max(int((scaled_max_wh - w) / 2), 0)
         vp = max(int((scaled_max_wh - h) / 2), 0)
         padding = [hp, vp, hp, vp]
@@ -62,5 +64,6 @@ def targetpad_transform(target_ratio: float, dim: int) -> torch.Tensor:
         CenterCrop(dim),
         _convert_image_to_rgb,
         ToTensor(),
-        Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+        Normalize((0.48145466, 0.4578275, 0.40821073),
+                  (0.26862954, 0.26130258, 0.27577711)),
     ])
