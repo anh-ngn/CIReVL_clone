@@ -88,12 +88,8 @@ def extract_image_features(device: torch.device, args: argparse.Namespace, datas
                 if len(aux_data):
                     aux_data['ref_features'].append(clip_model.get_image_features(
                         **clip_processor(images=ref_images.to(device), return_tensors="pt", padding=True)).cpu())
-                    if hasattr(clip_model, 'get_text_features'):
-                        aux_data['instruct_features'].append(clip_model.get_text_features(
-                            **clip_processor(text=instructions, return_tensors="pt", padding=True)).cpu())
-                    else:
-                        aux_data['instruct_features'].append(clip_model.get_text_features(
-                            **clip_processor(text=instructions, return_tensors="pt", padding=True)).cpu())
+                    aux_data['instruct_features'].append(clip_model.get_text_features(
+                        **clip_processor(text=instructions, return_tensors="pt", padding=True)).cpu())
 
                 # if len(aux_data):
                 #     # TODO: change here. DONE
