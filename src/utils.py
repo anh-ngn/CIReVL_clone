@@ -24,7 +24,7 @@ else:
 
 @torch.no_grad()
 def extract_image_features(device: torch.device, args: argparse.Namespace, dataset: torch.utils.data.Dataset, clip_model: AutoModel, clip_processor: AutoProcessor, batch_size: Optional[int] = 32,
-                           num_workers: Optional[int] = 8, preload: str = None, **kwargs) -> Tuple[torch.Tensor, List[str]]:
+                           num_workers: Optional[int] = 4, preload: str = None, **kwargs) -> Tuple[torch.Tensor, List[str]]:
     """
     Extracts image features from a dataset using a SigLIP model.
     """
@@ -137,7 +137,7 @@ def generate_predictions(
         target_names, reference_names = [], []
 
         query_loader = torch.utils.data.DataLoader(
-            dataset=query_dataset, batch_size=batch_size, num_workers=8,
+            dataset=query_dataset, batch_size=batch_size, num_workers=4,
             pin_memory=False, collate_fn=data_utils.collate_fn, shuffle=False)
         query_iterator = tqdm.tqdm(
             query_loader, position=0, desc='Generating image captions...')
@@ -327,7 +327,7 @@ def get_recall(indices, targets):
 def evaluate_genecis(device: torch.device, args: argparse.Namespace, clip_model: AutoModel, clip_processor: AutoProcessor, blip_model: Blip2ForConditionalGeneration, blip_processor: Blip2Processor, query_dataset: torch.utils.data.Dataset, preload_dict: Dict[str, Union[str, None]], topk: List[int] = [1, 2, 3], batch_size: int = 32, **kwargs):
 
     val_loader = torch.utils.data.DataLoader(
-        dataset=query_dataset, batch_size=batch_size, num_workers=8,
+        dataset=query_dataset, batch_size=batch_size, num_workers=4,
         pin_memory=False, collate_fn=data_utils.collate_fn, shuffle=False)
     query_iterator = tqdm.tqdm(
         val_loader, position=0, desc='Generating image captions...')
