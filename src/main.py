@@ -1,24 +1,27 @@
+import utils
+import prompts
+import datasets
+import data_utils
+import compute_results
 import os
 from typing import List, Dict
 
 import argparse
-import clip
-import lavis
+# import clip
+# import lavis
 import numpy as np
 import termcolor
 import torch
+from transformers import AutoProcessor, AutoModel
+from transformers import Blip2Processor, Blip2ForConditionalGeneration
+# from sklearn.metrics.pairwise import cosine_similarity
+
 
 torch.multiprocessing.set_sharing_strategy("file_system")
 
-import compute_results
-import data_utils
-import datasets
-import prompts
-import utils
-
 
 def main():
-    ### Load Input Arguments.
+    # Load Input Arguments.
     parser = argparse.ArgumentParser()
     # Base Arguments
     parser.add_argument("--exp-name", type=str, help="Experiment to evaluate")
@@ -31,30 +34,33 @@ def main():
         help="List of properties to preload is computed once before.",
     )
     # Base Model Choices
+    # TODO: change clip and blip to SigLIP and mBLIP
+    # DONE
     parser.add_argument(
         "--clip",
         type=str,
-        default="ViT-B/32",
+        default="siglip-base-patch16-256-multilingual",
         choices=[
-            "ViT-B/32",
-            "ViT-B/16",
-            "ViT-L/14",
-            "RN50x4",
-            "ViT-bigG-14",
-            "ViT-B-32",
-            "ViT-B-16",
-            "ViT-L-14",
-            "ViT-H-14",
-            "ViT-g-14",
+            "siglip-base-patch16-256-multilingual"
+            # "ViT-B/32",
+            # "ViT-B/16",
+            # "ViT-L/14",
+            # "RN50x4",
+            # "ViT-bigG-14",
+            # "ViT-B-32",
+            # "ViT-B-16",
+            # "ViT-L-14",
+            # "ViT-H-14",
+            # "ViT-g-14",
         ],
-        help="Which CLIP text-to-image retrieval model to use",
+        help="Which sigCLIP text-to-image retrieval model to use",
     ),
     parser.add_argument(
         "--blip",
         type=str,
-        default="blip_caption",
-        choices=["blip_caption"],
-        help="BLIP Image Caption Model to use.",
+        default="mblip-mt0-xl",
+        choices=["mblip-mt0-xl"],
+        help="mBLIP Image Caption Model to use.",
     )
     # Dataset Arguments ['dress', 'toptee', 'shirt']
     parser.add_argument(
@@ -135,15 +141,16 @@ def main():
     )
     args = parser.parse_args()
 
-    ### Set Device.
+    # Set Device.
     termcolor.cprint(
         f"Starting evaluation on {args.dataset.upper()} (split: {args.split})\n",
         color="green",
         attrs=["bold"],
     )
-    device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
+    device = torch.device(
+        f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
 
-    ### Argument Checks.
+    # Argument Checks.
     preload_dict = {key: None for key in ["img_features", "captions", "mods"]}
     preload_str = f"{args.dataset}_{args.blip}_{args.clip}_{args.split}".replace(
         "/", "-"
@@ -160,11 +167,13 @@ def main():
 
     if "captions" in args.preload:
         # # BLIP captions only have to be computed when BLIP model or BLIP prompt changes.
-        caption_load_str = f"{args.dataset}_{args.blip}_{args.split}".replace("/", "-")
+        caption_load_str = f"{args.dataset}_{args.blip}_{args.split}".replace(
+            "/", "-")
         if args.blip_prompt != "prompts.blip_prompt":
             preload_dict["captions"] = os.path.join(
                 "precomputed",
-                caption_load_str + f'_captions_{args.blip_prompt.split(".")[-1]}.pkl',
+                caption_load_str +
+                f'_captions_{args.blip_prompt.split(".")[-1]}.pkl',
             )
         else:
             preload_dict["captions"] = os.path.join(
@@ -173,9 +182,11 @@ def main():
 
     if "mods" in args.preload:
         # # LLM-based caption modifications have to be queried only when BLIP model or BLIP prompt changes.
-        mod_load_str = f"{args.dataset}_{args.blip}_{args.split}".replace("/", "-")
+        mod_load_str = f"{args.dataset}_{args.blip}_{args.split}".replace(
+            "/", "-")
         preload_dict["mods"] = os.path.join(
-            "precomputed", mod_load_str + f'_mods_{args.llm_prompt.split(".")[-1]}.json'
+            "precomputed", mod_load_str +
+            f'_mods_{args.llm_prompt.split(".")[-1]}.json'
         )
         if args.openai_engine != "gpt-3.5-turbo":
             preload_dict["mods"] = preload_dict["mods"].replace(
@@ -188,74 +199,93 @@ def main():
             + f'{args.blip_prompt.split(".")[-1]}_{args.llm_prompt.split(".")[-1]}_test_submission.json'
         )
 
-    ### Load CLIP model, BLIP model & Preprocessing.
-    print(f"Loading CLIP {args.clip}... ", end="")
+    # Load CLIP model, BLIP model & Preprocessing.
+    # TODO: change clip to SigLIP
+    # DONE: changed variables: clip_model, preprocess
+    print(f"Loading SigLIP {args.clip}... ", end="")
 
-    if args.clip in [
-        "ViT-bigG-14",
-        "ViT-B-32",
-        "ViT-B-16",
-        "ViT-L-14",
-        "ViT-H-14",
-        "ViT-g-14",
-    ]:
-        import open_clip
+    clip_model = AutoModel.from_pretrained(
+        "google/siglip-base-patch16-256-multilingual")
+    preprocess = AutoProcessor.from_pretrained(
+        "google/siglip-base-patch16-256-multilingual")
+    clip_model = clip_model.eval().requires_grad_(False).to(device)
 
-        pretraining = {
-            "ViT-B-32": "laion2b_s34b_b79k",
-            "ViT-B-16": "laion2b_s34b_b88k",
-            "ViT-L-14": "laion2b_s32b_b82k",
-            "ViT-H-14": "laion2b_s32b_b79k",
-            "ViT-g-14": "laion2b_s34b_b88k",
-            "ViT-bigG-14": "laion2b_s39b_b160k",
-        }
-        if args.weight_path == "":
-            weight_path = os.path.join(args.dataset_path, "..", "weights", "open_clip")
-        else:
-            weight_path = os.path.join(os.getcwd(), args.weight_path)
-        os.makedirs(weight_path, exist_ok=True)
-        clip_model, _, clip_preprocess = open_clip.create_model_and_transforms(
-            args.clip, pretrained=pretraining[args.clip], cache_dir=weight_path
-        )
-        clip_model = clip_model.eval().requires_grad_(False).to(device)
-        tokenizer = open_clip.get_tokenizer(args.clip)
-        clip_model.tokenizer = tokenizer
-    else:
-        clip_model, clip_preprocess = clip.load(args.clip, device=device, jit=False)
-        clip_model = clip_model.float().eval().requires_grad_(False).to(device)
+    # if args.clip in [
+    #     "ViT-bigG-14",
+    #     "ViT-B-32",
+    #     "ViT-B-16",
+    #     "ViT-L-14",
+    #     "ViT-H-14",
+    #     "ViT-g-14",
+    # ]:
+    #     import open_clip
+
+    #     pretraining = {
+    #         "ViT-B-32": "laion2b_s34b_b79k",
+    #         "ViT-B-16": "laion2b_s34b_b88k",
+    #         "ViT-L-14": "laion2b_s32b_b82k",
+    #         "ViT-H-14": "laion2b_s32b_b79k",
+    #         "ViT-g-14": "laion2b_s34b_b88k",
+    #         "ViT-bigG-14": "laion2b_s39b_b160k",
+    #     }
+    #     if args.weight_path == "":
+    #         weight_path = os.path.join(
+    #             args.dataset_path, "..", "weights", "open_clip")
+    #     else:
+    #         weight_path = os.path.join(os.getcwd(), args.weight_path)
+    #     os.makedirs(weight_path, exist_ok=True)
+    #     clip_model, _, clip_preprocess = open_clip.create_model_and_transforms(
+    #         args.clip, pretrained=pretraining[args.clip], cache_dir=weight_path
+    #     )
+    #     clip_model = clip_model.eval().requires_grad_(False).to(device)
+    #     tokenizer = open_clip.get_tokenizer(args.clip)
+    #     clip_model.tokenizer = tokenizer
+    # else:
+    #     clip_model, clip_preprocess = clip.load(
+    #         args.clip, device=device, jit=False)
+    #     clip_model = clip_model.float().eval().requires_grad_(False).to(device)
 
     print("Done.")
 
-    if args.preprocess_type == "targetpad":
-        print("Target pad preprocess pipeline is used.")
-        preprocess = data_utils.targetpad_transform(
-            1.25, clip_preprocess.transforms[0].size
-        )
-    elif args.preprocess_type == "clip":
-        print("CLIP preprocess pipeline is used.")
-        preprocess = clip_preprocess
+    # DONE: Change here to mBLIP
+    # if args.preprocess_type == "targetpad":
+    #     print("Target pad preprocess pipeline is used.")
+    #     preprocess = data_utils.targetpad_transform(
+    #         1.25, clip_preprocess.transforms[0].size
+    #     )
+    # elif args.preprocess_type == "clip":
+    #     print("CLIP preprocess pipeline is used.")
+    #     preprocess = clip_preprocess
 
-    blip_model = None
-    if preload_dict["captions"] is None or not os.path.exists(preload_dict["captions"]):
-        blip_model, vis_processors, _ = lavis.models.load_model_and_preprocess(
-            name="blip_caption",
-            model_type="large_coco",
-            is_eval=True,
-            device=device,
-        )
-    else:
-        import omegaconf
+    # Load BLIP model.
+    # TODO: change here to mBLIP
+    # DONE: Change BLIP to mBLIP
+    # DONE: changed variables: vis_processors -> blip_processor, blip_model
+    blip_processor = Blip2Processor.from_pretrained("Gregor/mblip-mt0-xl")
+    blip_model = Blip2ForConditionalGeneration.from_pretrained(
+        "Gregor/mblip-mt0-xl", device_map="auto")
+    # blip_model = None
+    # if preload_dict["captions"] is None or not os.path.exists(preload_dict["captions"]):
+    #     blip_model, vis_processors, _ = lavis.models.load_model_and_preprocess(
+    #         name="blip_caption",
+    #         model_type="large_coco",
+    #         is_eval=True,
+    #         device=device,
+    #     )
+    # else:
+    #     import omegaconf
 
-        model_cls = lavis.common.registry.registry.get_model_class(args.blip)
-        preprocess_cfg = omegaconf.OmegaConf.load(
-            model_cls.default_config_path("pretrain_flant5xxl")
-        ).preprocess
-        vis_processors, _ = lavis.models.load_preprocess(preprocess_cfg)
-        print(f"Skipped loading of BLIP ({args.blip}).")
+    #     model_cls = lavis.common.registry.registry.get_model_class(args.blip)
+    #     preprocess_cfg = omegaconf.OmegaConf.load(
+    #         model_cls.default_config_path("pretrain_flant5xxl")
+    #     ).preprocess
+    #     vis_processors, _ = lavis.models.load_preprocess(preprocess_cfg)
+    #     print(f"Skipped loading of BLIP ({args.blip}).")
 
-    ### Load Evaluation Datasets.
+    # Load Evaluation Datasets.
     target_datasets, query_datasets, pairings = [], [], []
 
+    # DONE: change blip_transform from vis_processors["eval"] to blip_processor
     if "fashioniq" in args.dataset.lower():
         dress_type = args.dataset.split("_")[-1]
         target_datasets.append(
@@ -265,7 +295,7 @@ def main():
                 [dress_type],
                 "classic",
                 preprocess,
-                blip_transform=vis_processors["eval"],
+                blip_transform=blip_processor,
             )
         )
         query_datasets.append(
@@ -275,7 +305,7 @@ def main():
                 [dress_type],
                 "relative",
                 preprocess,
-                blip_transform=vis_processors["eval"],
+                blip_transform=blip_processor,
             )
         )
         pairings.append(dress_type)
@@ -289,7 +319,7 @@ def main():
                 split,
                 "classic",
                 preprocess,
-                blip_transform=vis_processors["eval"],
+                blip_transform=blip_processor,
             )
         )
         query_datasets.append(
@@ -298,7 +328,7 @@ def main():
                 split,
                 "relative",
                 preprocess,
-                blip_transform=vis_processors["eval"],
+                blip_transform=blip_processor,
             )
         )
         compute_results_function = compute_results.cirr
@@ -311,7 +341,7 @@ def main():
                 args.split,
                 "classic",
                 preprocess,
-                blip_transform=vis_processors["eval"],
+                blip_transform=blip_processor,
             )
         )
         query_datasets.append(
@@ -320,15 +350,18 @@ def main():
                 args.split,
                 "relative",
                 preprocess,
-                blip_transform=vis_processors["eval"],
+                blip_transform=blip_processor,
             )
         )
         compute_results_function = compute_results.circo
         pairings.append("default")
 
+    # DONE: transform: clip_preporcess, blip_transform: blip_processor
+
     elif "genecis" in args.dataset.lower():
         prop_file = "_".join(args.dataset.lower().split("_")[1:])
-        prop_file = os.path.join(args.dataset_path, "genecis", prop_file + ".json")
+        prop_file = os.path.join(
+            args.dataset_path, "genecis", prop_file + ".json")
 
         if "object" in args.dataset.lower():
             datapath = os.path.join(args.dataset_path, "coco2017", "val2017")
@@ -336,15 +369,16 @@ def main():
                 root_dir=datapath,
                 val_split_path=prop_file,
                 transform=preprocess,
-                blip_transform=vis_processors["eval"],
+                blip_transform=blip_processor,
             )
         elif "attribute" in args.dataset.lower():
-            datapath = os.path.join(args.dataset_path, "Visual_Genome", "VG_All")
+            datapath = os.path.join(
+                args.dataset_path, "Visual_Genome", "VG_All")
             genecis_dataset = datasets.VAWValSubset(
                 image_dir=datapath,
                 val_split_path=prop_file,
                 transform=preprocess,
-                blip_transform=vis_processors["eval"],
+                blip_transform=blip_processor,
             )
 
         target_datasets.append(genecis_dataset)
@@ -352,7 +386,7 @@ def main():
         compute_results_function = compute_results.genecis
         pairings.append("default")
 
-    ### Evaluate performances.
+    # Evaluate performances.
     for query_dataset, target_dataset, pairing in zip(
         query_datasets, target_datasets, pairings
     ):
@@ -362,7 +396,7 @@ def main():
             attrs=["bold"],
         )
 
-        ### General Input Arguments.
+        # General Input Arguments.
         input_kwargs = {
             "args": args,
             "query_dataset": query_dataset,
@@ -372,22 +406,26 @@ def main():
             "preprocess": preprocess,
             "device": device,
             "split": args.split,
-            "blip_transform": vis_processors["eval"],
+            "blip_transform": blip_processor,
             "preload_dict": preload_dict,
         }
 
-        ### Compute Target Image Features
+        # Compute Target Image Features
         print(f"Extracting target image features using CLIP: {args.clip}.")
         index_features, index_names, index_ranks, aux_data = (
+            # TODO: change this
+            # DONE
             utils.extract_image_features(
                 device,
                 args,
                 target_dataset,
                 clip_model,
+                preprocess,
                 preload=preload_dict["img_features"],
             )
         )
-        index_features = torch.nn.functional.normalize(index_features.float(), dim=-1)
+        index_features = torch.nn.functional.normalize(
+            index_features.float(), dim=-1)
         input_kwargs.update(
             {
                 "index_features": index_features,
@@ -396,7 +434,7 @@ def main():
             }
         )
 
-        ### Compute Method-specific Query Features.
+        # Compute Method-specific Query Features.
         # This part can be interchanged with any other method implementation.
         print(
             f"Generating conditional query predictions (CLIP: {args.clip}, BLIP: {args.blip})."
@@ -404,7 +442,7 @@ def main():
         out_dict = utils.generate_predictions(**input_kwargs)
         input_kwargs.update(out_dict)
 
-        ### Compute Dataset-specific Retrieval Scores.
+        # Compute Dataset-specific Retrieval Scores.
         # This part is dataset-specific and declared above.
         print("Computing final retrieval metrics.")
         if args.dataset == "genecis_focus_attribute":
@@ -412,7 +450,8 @@ def main():
                 aux_data["ref_features"].float().to(device)
             )
             out_dict["predicted_features"] = torch.nn.functional.normalize(
-                (out_dict["predicted_features"].float() + aux_data["ref_features"]) / 2,
+                (out_dict["predicted_features"].float() +
+                 aux_data["ref_features"]) / 2,
                 dim=-1,
             )
 

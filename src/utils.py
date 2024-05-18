@@ -13,6 +13,9 @@ import tqdm
 import data_utils
 import prompts
 
+from transformers import AutoProcessor, AutoModel, Blip2Processor, Blip2ForConditionalGeneration
+
+
 if torch.cuda.is_available():
     dtype = torch.float16
 else:
@@ -20,31 +23,35 @@ else:
 
 
 @torch.no_grad()
-def extract_image_features(device: torch.device, args: argparse.Namespace, dataset: torch.utils.data.Dataset, clip_model: clip.model.CLIP, batch_size: Optional[int] = 32,
-                           num_workers: Optional[int] = 8, preload: str=None, **kwargs) -> Tuple[torch.Tensor, List[str]]:
+def extract_image_features(device: torch.device, args: argparse.Namespace, dataset: torch.utils.data.Dataset, clip_model: AutoModel, clip_processor: AutoProcessor, batch_size: Optional[int] = 32,
+                           num_workers: Optional[int] = 8, preload: str = None, **kwargs) -> Tuple[torch.Tensor, List[str]]:
     """
-    Extracts image features from a dataset using a CLIP model.
+    Extracts image features from a dataset using a SigLIP model.
     """
+
+    # TODO: change here
     if preload is not None and os.path.exists(preload):
         print(f'Loading precomputed image features from {preload}!')
         extracted_data = pickle.load(open(preload, 'rb'))
         index_features, index_names = extracted_data['index_features'], extracted_data['index_names']
-        index_ranks = [] if 'index_ranks' not in extracted_data else extracted_data['index_ranks']        
-        aux_data = {} if 'aux_data' not in extracted_data else extracted_data['aux_data']
+        index_ranks = [] if 'index_ranks' not in extracted_data else extracted_data['index_ranks']
+        aux_data = {
+        } if 'aux_data' not in extracted_data else extracted_data['aux_data']
     else:
         loader = torch.utils.data.DataLoader(dataset=dataset, batch_size=batch_size,
-                            num_workers=num_workers, pin_memory=True, collate_fn=data_utils.collate_fn)
+                                             num_workers=num_workers, pin_memory=True, collate_fn=data_utils.collate_fn)
 
         index_features, index_names, index_ranks, aux_data = [], [], [], []
         if 'genecis' in args.dataset:
             aux_data = {'ref_features': [], 'instruct_features': []}
-            
+
         try:
-            print(f"Extracting image features {dataset.__class__.__name__} - {dataset.split}")
+            print(
+                f"Extracting image features {dataset.__class__.__name__} - {dataset.split}")
         except Exception as e:
             pass
 
-        # Extract features    
+        # Extract features
         index_rank = None
         for batch in tqdm.tqdm(loader):
             if 'genecis' in args.dataset:
@@ -56,63 +63,87 @@ def extract_image_features(device: torch.device, args: argparse.Namespace, datas
             else:
                 images = batch.get('image')
                 names = batch.get('image_name')
-                if images is None: images = batch.get('reference_image')
-                if names is None: names = batch.get('reference_name')
+                if images is None:
+                    images = batch.get('reference_image')
+                if names is None:
+                    names = batch.get('reference_name')
 
             images = images.to(device)
-            with torch.no_grad(),torch.cuda.amp.autocast():
-                batch_features = clip_model.encode_image(images)
+            with torch.no_grad(), torch.cuda.amp.autocast():
+                # TODO: change here
+                # DONE: changed
+                batch_features = clip_model.get_image_features(
+                    **clip_processor(images=images, return_tensors="pt").to(device))
+
+                # batch_features = clip_model.encode_image(images)
                 index_features.append(batch_features.cpu())
                 index_names.extend(names)
                 if index_rank is not None:
                     index_ranks.extend(index_rank)
                 if len(aux_data):
-                    aux_data['ref_features'].append(clip_model.encode_image(ref_images.to(device)).cpu())
+                    # TODO: change here. DONE
+                    # aux_data['ref_features'].append(
+                    #     clip_model.encode_image(ref_images.to(device)).cpu())
+                    aux_data['ref_features'].append(clip_model.get_image_features(
+                        **clip_processor(images=ref_images.to(device), return_tensors="pt")).cpu())
+
+                    # TODO: change here. DONE
                     if hasattr(clip_model, 'tokenizer'):
-                        aux_data['instruct_features'].append(clip_model.encode_text(clip_model.tokenizer(instructions, context_length=77).to(device)).cpu())
+                        aux_data['instruct_features'].append(clip_model.get_text_features(
+                            **clip_processor(text=instructions, return_tensors="pt").to(device)).cpu())
+
+                        # aux_data['instruct_features'].append(clip_model.encode_text(
+                        #     clip_model.tokenizer(instructions, context_length=77).to(device)).cpu())
+                    # TODO: change here. DONE
                     else:
-                        aux_data['instruct_features'].append(clip_model.encode_text(clip.tokenize(instructions, context_length=77).to(device)).cpu())
-        
+                        aux_data['instruct_features'].append(clip_model.get_text_features(
+                            **clip_processor(text=instructions, return_tensors="pt").to(device)).cpu())
+
+                        # aux_data['instruct_features'].append(clip_model.encode_text(
+                        #     clip.tokenize(instructions, context_length=77).to(device)).cpu())
+
         index_features = torch.vstack(index_features)
-        
+
         if 'genecis' in args.dataset:
             # Reshape features into gallery-set for GeneCIS-style problems.
-            index_features = index_features.view(-1, n_gallery, batch_features.size()[-1])
+            index_features = index_features.view(-1,
+                                                 n_gallery, batch_features.size()[-1])
             index_ranks = torch.stack(index_ranks)
             aux_data['ref_features'] = torch.vstack(aux_data['ref_features'])
-            aux_data['instruct_features'] = torch.vstack(aux_data['instruct_features'])
-            
+            aux_data['instruct_features'] = torch.vstack(
+                aux_data['instruct_features'])
+
         if preload is not None:
-            pickle.dump({'index_features': index_features, 'index_names': index_names, 'index_ranks': index_ranks, 'aux_data': aux_data}, open(preload, 'wb'))
-    
+            pickle.dump({'index_features': index_features, 'index_names': index_names,
+                        'index_ranks': index_ranks, 'aux_data': aux_data}, open(preload, 'wb'))
+
     return index_features, index_names, index_ranks, aux_data
-
-
 
 
 @torch.no_grad()
 def generate_predictions(
-    device: torch.device, args: argparse.Namespace, clip_model: clip.model.CLIP, blip_model: callable, query_dataset: torch.utils.data.Dataset, preload_dict: Dict[str, Union[str,None]], **kwargs
+    device: torch.device, args: argparse.Namespace, clip_model: AutoModel, clip_processor: AutoProcessor, blip_model: Blip2ForConditionalGeneration, blip_processor: Blip2Processor, query_dataset: torch.utils.data.Dataset, preload_dict: Dict[str, Union[str, None]], **kwargs
 ) -> Tuple[torch.Tensor, List[str], list]:
     """
     Generates features predictions for the validation set of CIRCO
-    """    
-    ### Generate BLIP Image Captions.
-    torch.cuda.empty_cache()    
+    """
+    # Generate BLIP Image Captions.
+    torch.cuda.empty_cache()
     batch_size = 32
-    
+
     if preload_dict['captions'] is None or not os.path.exists(preload_dict['captions']):
         all_captions, relative_captions = [], []
         gt_img_ids, query_ids = [], []
         target_names, reference_names = [], []
-        
+
         query_loader = torch.utils.data.DataLoader(
-            dataset=query_dataset, batch_size=batch_size, num_workers=8, 
-            pin_memory=False, collate_fn=data_utils.collate_fn, shuffle=False)            
-        query_iterator = tqdm.tqdm(query_loader, position=0, desc='Generating image captions...')
-        
+            dataset=query_dataset, batch_size=batch_size, num_workers=8,
+            pin_memory=False, collate_fn=data_utils.collate_fn, shuffle=False)
+        query_iterator = tqdm.tqdm(
+            query_loader, position=0, desc='Generating image captions...')
+
         for batch in query_iterator:
-            
+
             if 'genecis' in args.dataset:
                 blip_image = batch[2].to(device)
                 relative_captions.extend(batch[1])
@@ -126,11 +157,11 @@ def generate_predictions(
                     rel_caps = np.array(rel_caps).T.flatten().tolist()
                     relative_captions.extend([
                         f"{rel_caps[i].strip('.?, ')} and {rel_caps[i + 1].strip('.?, ')}" for i in range(0, len(rel_caps), 2)
-                        ])
-                                
+                    ])
+
                 if 'target_name' in batch:
                     target_names.extend(batch['target_name'])
-            
+
                 gt_key = 'gt_img_ids'
                 if 'group_members' in batch:
                     gt_key = 'group_members'
@@ -142,21 +173,33 @@ def generate_predictions(
                     query_key = 'pair_id'
                 if query_key in batch:
                     query_ids.extend(batch[query_key])
-                        
+
             query_iterator.set_postfix_str(f'Shape: {blip_image.size()}')
-                
+
             captions = []
             blip_prompt = eval(args.blip_prompt)
             for i in tqdm.trange(blip_image.size(0), position=1, desc='Iterating over batch', leave=False):
+                # TODO: change here
+                # DONE
+
+                # img = blip_image[i].unsqueeze(0)
+                # caption = blip_model.generate(
+                #     {'image': img, "prompt": blip_prompt})
+                # captions.append(caption[0])
                 img = blip_image[i].unsqueeze(0)
-                caption = blip_model.generate({'image': img, "prompt": blip_prompt})
-                captions.append(caption[0])
+                inputs = blip_processor(
+                    images=img, text=blip_prompt, return_tensors="pt").to(device)
+                caption = blip_model.generate(**inputs, max_length=40)
+                decoded_caption = blip_processor.decode(
+                    caption[0], skip_special_tokens=True)
+                captions.append(decoded_caption)
+
             all_captions.extend(captions)
 
         if preload_dict['captions'] is not None:
             res_dict = {
-                'all_captions': all_captions, 
-                'gt_img_ids': gt_img_ids, 
+                'all_captions': all_captions,
+                'gt_img_ids': gt_img_ids,
                 'relative_captions': relative_captions,
                 'target_names': target_names,
                 'reference_names': reference_names,
@@ -164,11 +207,12 @@ def generate_predictions(
             }
             pickle.dump(res_dict, open(preload_dict['captions'], 'wb'))
     else:
-        print(f'Loading precomputed image captions from {preload_dict["captions"]}!')
+        print(
+            f'Loading precomputed image captions from {preload_dict["captions"]}!')
         res_dict = pickle.load(open(preload_dict['captions'], 'rb'))
         all_captions, gt_img_ids, relative_captions, target_names, reference_names, query_ids = res_dict.values()
-        
-    ### Modify Captions using LLM.
+
+    # Modify Captions using LLM.
     if preload_dict['mods'] is None or not os.path.exists(preload_dict['mods']):
         modified_captions = []
         base_prompt = eval(args.llm_prompt)
@@ -176,15 +220,16 @@ def generate_predictions(
             instruction = relative_captions[i]
             img_caption = all_captions[i]
             final_prompt = base_prompt + '\n' + "Image Content: " + img_caption
-            final_prompt = final_prompt + '\n' + 'Instruction: '+ instruction
-            resp = openai_api.openai_completion(final_prompt, engine=args.openai_engine, api_key=args.openai_key)
-            #resp = llama_pipeline(final_prompt,temperature=0.6,top_p=0.9,max_length=800)[0]['generated_text']
+            final_prompt = final_prompt + '\n' + 'Instruction: ' + instruction
+            resp = openai_api.openai_completion(
+                final_prompt, engine=args.openai_engine, api_key=args.openai_key)
+            # resp = llama_pipeline(final_prompt,temperature=0.6,top_p=0.9,max_length=800)[0]['generated_text']
 
-            ## extract edited description
+            # extract edited description
             resp = resp.split('\n')
             description = ""
             aug = False
-            for line in resp:                    
+            for line in resp:
                 if line.strip().startswith('Edited Description:'):
                     description = line.split(':')[1].strip()
                     if description == "":
@@ -194,21 +239,25 @@ def generate_predictions(
                     aug = True
                     break
             if not aug:
-                modified_captions.append(relative_captions[i])   
-                
+                modified_captions.append(relative_captions[i])
+
         if preload_dict['mods'] is not None:
-            dump_dict = {'base_caption':all_captions, 'instruction':relative_captions, 'modified_captions': modified_captions}
+            dump_dict = {'base_caption': all_captions,
+                         'instruction': relative_captions, 'modified_captions': modified_captions}
             json.dump(dump_dict, open(preload_dict['mods'], 'w'), indent=6)
     else:
-        print(f'Loading precomputed caption modifiers from {preload_dict["mods"]}!')
-        modified_captions = json.load(open(preload_dict['mods'], 'r'))['modified_captions']
-                 
-    ### Perform text-to-image retrieval based on the modified captions.
-    predicted_features = text_encoding(device, clip_model, modified_captions, batch_size=batch_size, mode=args.retrieval)   
+        print(
+            f'Loading precomputed caption modifiers from {preload_dict["mods"]}!')
+        modified_captions = json.load(open(preload_dict['mods'], 'r'))[
+            'modified_captions']
+
+    # Perform text-to-image retrieval based on the modified captions.
+    predicted_features = text_encoding(
+        device, clip_model, clip_processor, modified_captions, batch_size=batch_size, mode=args.retrieval)
 
     return {
-        'predicted_features': predicted_features, 
-        'target_names': target_names, 
+        'predicted_features': predicted_features,
+        'target_names': target_names,
         'targets': gt_img_ids,
         'reference_names': reference_names,
         'query_ids': query_ids,
@@ -216,11 +265,11 @@ def generate_predictions(
         'modified_captions': modified_captions,
         'instructions': relative_captions
     }
-    
-    
-    
+
+
 class AverageMeter(object):
     """Computes and stores the average and current value"""
+
     def __init__(self):
         self.reset()
 
@@ -234,9 +283,11 @@ class AverageMeter(object):
         self.val = val
         self.sum += val * n
         self.count += n
-        self.avg = self.sum / self.count    
-    
-def get_recall(indices, targets): #recall --> wether next item in session is within top K recommended items or not
+        self.avg = self.sum / self.count
+
+
+# recall --> wether next item in session is within top K recommended items or not
+def get_recall(indices, targets):
     """
     Code adapted from: https://github.com/hungthanhpham94/GRU4REC-pytorch/blob/master/lib/metric.py
     Calculates the recall score for the given predictions and targets
@@ -251,53 +302,79 @@ def get_recall(indices, targets): #recall --> wether next item in session is wit
         # One hot label branch
         targets = targets.view(-1, 1).expand_as(indices)
         hits = (targets == indices).nonzero()
-        if len(hits) == 0: return 0
+        if len(hits) == 0:
+            return 0
         n_hits = (targets == indices).nonzero()[:, :-1].size(0)
         recall = float(n_hits) / targets.size(0)
         return recall
-    else:        
+    else:
         # Multi hot label branch
         recall = []
-        for preds, gt in zip(indices, targets):            
+        for preds, gt in zip(indices, targets):
             max_val = torch.max(torch.cat([preds, gt])).int().item()
-            preds_binary = torch.zeros((max_val + 1,), device=preds.device, dtype=torch.float32).scatter_(0, preds, 1)
-            gt_binary = torch.zeros((max_val + 1,), device=gt.device, dtype=torch.float32).scatter_(0, gt.long(), 1)
+            preds_binary = torch.zeros(
+                (max_val + 1,), device=preds.device, dtype=torch.float32).scatter_(0, preds, 1)
+            gt_binary = torch.zeros(
+                (max_val + 1,), device=gt.device, dtype=torch.float32).scatter_(0, gt.long(), 1)
             success = (preds_binary * gt_binary).sum() > 0
-            recall.append(int(success))        
+            recall.append(int(success))
         return torch.Tensor(recall).float().mean()
-            
-@torch.no_grad()            
-def evaluate_genecis(device: torch.device, args: argparse.Namespace, clip_model: clip.model.CLIP, blip_model: callable, query_dataset: torch.utils.data.Dataset, preload_dict: Dict[str, Union[str,None]], topk: List[int] = [1,2,3], batch_size: int=32, **kwargs):
+
+
+@torch.no_grad()
+# TODO: change here. DONE
+# def evaluate_genecis(device: torch.device, args: argparse.Namespace, clip_model: clip.model.CLIP, blip_model: callable, query_dataset: torch.utils.data.Dataset, preload_dict: Dict[str, Union[str, None]], topk: List[int] = [1, 2, 3], batch_size: int = 32, **kwargs):
+def evaluate_genecis(device: torch.device, args: argparse.Namespace, clip_model: AutoModel, clip_processor: AutoProcessor, blip_model: Blip2ForConditionalGeneration, blip_processor: Blip2Processor, query_dataset: torch.utils.data.Dataset, preload_dict: Dict[str, Union[str, None]], topk: List[int] = [1, 2, 3], batch_size: int = 32, **kwargs):
+
     val_loader = torch.utils.data.DataLoader(
-        dataset=query_dataset, batch_size=batch_size, num_workers=8, 
-        pin_memory=False, collate_fn=data_utils.collate_fn, shuffle=False)            
-    query_iterator = tqdm.tqdm(val_loader, position=0, desc='Generating image captions...')
+        dataset=query_dataset, batch_size=batch_size, num_workers=8,
+        pin_memory=False, collate_fn=data_utils.collate_fn, shuffle=False)
+    query_iterator = tqdm.tqdm(
+        val_loader, position=0, desc='Generating image captions...')
 
     meters = {k: AverageMeter() for k in topk}
     sims_to_save = []
-    
+
     with torch.no_grad():
         for batch in query_iterator:
             ref_img = batch[0].to(device)
             original_caption = batch[1]
-            caption = clip.tokenize(batch[1],context_length=77).to(device)
+            # caption = clip.tokenize(batch[1], context_length=77).to(device)
+            caption = clip_processor(
+                text=original_caption, return_tensors="pt").to(device)
+
             blip_ref_img = batch[2].to(device)
             gallery_set = batch[3].to(device)
             target_rank = batch[4].to(device)
 
             bsz, n_gallery, _, h, w = gallery_set.size()
-            imgs_ = torch.cat([ref_img,gallery_set.view(-1,3,h,w)],dim=0)
-            
+            imgs_ = torch.cat([ref_img, gallery_set.view(-1, 3, h, w)], dim=0)
+
+            # TODO: change here. DONE
             # CLIP Encoding
-            all_img_feats = clip_model.encode_image(imgs_).float()
-            caption_feats = clip_model.encode_text(caption).float()
+            # all_img_feats = clip_model.encode_image(imgs_).float()
+            # caption_feats = clip_model.encode_text(caption).float()
+            all_img_feats = clip_model.get_image_features(
+                **clip_processor(images=imgs_, return_tensors="pt").to(device)).float()
+            caption_feats = clip_model.get_text_features(**caption).float()
 
             # BLIP Captioning
+            # TODO: change here. DONE
             captions = []
-            for i in tqdm.trange(bsz, position=1, desc=f'Captioning image with BLIP', leave=False):
-                caption = blip_model.generate({"image": blip_ref_img[i].unsqueeze(0), "prompt": prompts.blip_prompt})
-                captions.append(caption[0])
-            
+            for i in tqdm.trange(bsz, position=1, desc=f'Captioning image with mBLIP', leave=False):
+                img = blip_ref_img[i].unsqueeze(0)
+                inputs = blip_processor(
+                    images=img, text=prompts.blip_prompt, return_tensors="pt").to(device)
+                caption = blip_model.generate(**inputs, max_length=40)
+                decoded_caption = blip_processor.decode(
+                    caption[0], skip_special_tokens=True)
+                captions.append(decoded_caption)
+
+            # for i in tqdm.trange(bsz, position=1, desc=f'Captioning image with BLIP', leave=False):
+            #     caption = blip_model.generate(
+            #         {"image": blip_ref_img[i].unsqueeze(0), "prompt": prompts.blip_prompt})
+            #     captions.append(caption[0])
+
             modified_captions = []
             base_prompt = eval(args.llm_prompt)
 
@@ -306,13 +383,13 @@ def evaluate_genecis(device: torch.device, args: argparse.Namespace, clip_model:
                 instruction = original_caption[i]
                 img_caption = captions[i]
                 final_prompt = base_prompt + '\n' + "Image Content: " + img_caption
-                final_prompt = final_prompt + '\n' + 'Instruction: '+ instruction
+                final_prompt = final_prompt + '\n' + 'Instruction: ' + instruction
                 resp = openai_api.openai_completion(final_prompt)
 
                 resp = resp.split('\n')
 
                 description = ""
-                for line in resp:                        
+                for line in resp:
                     if line.startswith('Edited Description:'):
                         description = line.split(':')[1].strip()
                         modified_captions.append(description)
@@ -320,21 +397,30 @@ def evaluate_genecis(device: torch.device, args: argparse.Namespace, clip_model:
                 if description == "":
                     modified_captions.append(original_caption[i])
 
-            predicted_feature = torch.nn.functional.normalize(clip_model.encode_text(clip.tokenize(modified_captions,context_length=77).to(device)))
-            
-            ##### COMPUTE RECALL - Base Evaluation.
-            ref_feats, gallery_feats = all_img_feats.split((bsz,bsz*n_gallery),dim=0)
-            gallery_feats = gallery_feats.view(bsz,n_gallery,-1)
-            gallery_feats = torch.nn.functional.normalize(gallery_feats, dim=-1)
+            # TODO: change here. DONE
+            # predicted_feature = torch.nn.functional.normalize(clip_model.encode_text(
+            #     clip.tokenize(modified_captions, context_length=77).to(device)))
+            predicted_feature = torch.nn.functional.normalize(clip_model.get_text_features(
+                **clip_processor(text=modified_captions, return_tensors="pt").to(device)))
 
-            #combined_feats = F.normalize(ref_feats + caption_feats)
+            # COMPUTE RECALL - Base Evaluation.
+            ref_feats, gallery_feats = all_img_feats.split(
+                (bsz, bsz*n_gallery), dim=0)
+            gallery_feats = gallery_feats.view(bsz, n_gallery, -1)
+            gallery_feats = torch.nn.functional.normalize(
+                gallery_feats, dim=-1)
+
+            # combined_feats = F.normalize(ref_feats + caption_feats)
             combined_feats = predicted_feature
             # Compute similarity
-            similarities = combined_feats[:, None, :] * gallery_feats       # B x N x D
-            similarities = similarities.sum(dim=-1)                         # B x N
+            similarities = combined_feats[:, None,
+                                          :] * gallery_feats       # B x N x D
+            similarities = similarities.sum(
+                dim=-1)                         # B x N
 
             # Sort the similarities in ascending order (closest example is the predicted sample)
-            _, sort_idxs = similarities.sort(dim=-1, descending=True)                   # B x N
+            _, sort_idxs = similarities.sort(
+                dim=-1, descending=True)                   # B x N
 
             # Compute recall at K
             for k in topk:
@@ -343,31 +429,44 @@ def evaluate_genecis(device: torch.device, args: argparse.Namespace, clip_model:
             sims_to_save.append(similarities.cpu())
 
         # Print results
-        print_str = '\n'.join([f'Recall @ {k} = {v.avg:.4f}' for k, v in meters.items()])
+        print_str = '\n'.join(
+            [f'Recall @ {k} = {v.avg:.4f}' for k, v in meters.items()])
         print(print_str)
 
         return meters
-    
-    
-def text_encoding(device, clip_model, input_captions, batch_size=32, mode='default'):
+
+
+def text_encoding(device, clip_model, clip_processor, input_captions, batch_size=32, mode='default'):
     n_iter = int(np.ceil(len(input_captions)/batch_size))
     predicted_features = []
-        
+
     for i in tqdm.trange(n_iter, position=0, desc='Encoding captions...'):
         captions_to_use = input_captions[i*batch_size:(i+1)*batch_size]
-        
-        if hasattr(clip_model, 'tokenizer'):
-            tokenized_input_captions = clip_model.tokenizer(captions_to_use, context_length=77).to(device)
-        else:
-            tokenized_input_captions = clip.tokenize(captions_to_use, context_length=77, truncate=True).to(device)
+
+        # TODO: change here
+        captions_to_use = input_captions[i * batch_size:(i + 1) * batch_size]
+
+        tokenized_input_captions = clip_processor(
+            text=captions_to_use, return_tensors="pt", padding="max_length").to(device)
+
+        siglip_text_features = clip_model.get_text_features(
+            **tokenized_input_captions)
+        predicted_features.append(siglip_text_features)
+
+        # if hasattr(clip_model, 'tokenizer'):
+        #     tokenized_input_captions = clip_model.tokenizer(
+        #         captions_to_use, context_length=77).to(device)
+        # else:
+        #     tokenized_input_captions = clip.tokenize(
+        #         captions_to_use, context_length=77, truncate=True).to(device)
         # input_captions = [f"a photo of $ that {caption}" for caption in relative_captions]
-        #clip_text_features = encode_with_pseudo_tokens(clip_model, tokenized_input_captions, batch_tokens)
-        clip_text_features = clip_model.encode_text(tokenized_input_captions)
-        predicted_features.append(clip_text_features)
-    predicted_features = torch.vstack(predicted_features)        
-        
+        # clip_text_features = encode_with_pseudo_tokens(clip_model, tokenized_input_captions, batch_tokens)
+        # clip_text_features = clip_model.encode_text(tokenized_input_captions)
+        # predicted_features.append(clip_text_features)
+    predicted_features = torch.vstack(predicted_features)
+
     return torch.nn.functional.normalize(predicted_features, dim=-1)
-    
+
 
 prompt_ensemble = [
     'A bad photo of a {}',
