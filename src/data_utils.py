@@ -19,7 +19,6 @@ def collate_fn(batch):
     :param batch: input_batch
     :return: output_batch = input_batch - None_values
     '''
-    print("break point 21")
     batch = list(filter(lambda x: x is not None, batch))
     return torch.utils.data.dataloader.default_collate(batch)
 
