@@ -183,6 +183,7 @@ class CIRRDataset(Dataset):
         :param preprocess: function which preprocesses the image
         :param no_duplicates: if True, the dataset will not yield duplicate images in relative mode, does not affect classic mode
         """
+        print("break point 0")
         dataset_path = Path(dataset_path)
         self.dataset_path = dataset_path
         self.preprocess = preprocess
@@ -225,6 +226,7 @@ class CIRRDataset(Dataset):
         print(f"CIRR {split} dataset in {mode} mode initialized")
 
     def __getitem__(self, index) -> dict:
+        print("get item")
         try:
             if self.mode == 'relative':
                 group_members = self.triplets[index]['img_set']['members']
