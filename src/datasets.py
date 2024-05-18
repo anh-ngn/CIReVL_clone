@@ -194,6 +194,7 @@ class CIRRDataset(Dataset):
         if split == "test":
             split = "test1"
             self.split = "test1"
+        print("break point 1")
 
         # Validate inputs
         if split not in ['test1', 'train', 'val']:
@@ -205,6 +206,7 @@ class CIRRDataset(Dataset):
         with open(dataset_path / 'cirr' / 'captions' / f'cap.rc2.{split}.json') as f:
             self.triplets = json.load(f)
 
+        print("break point 2")
         # Remove duplicates from triplets
         if self.no_duplicates:
             seen = set()
@@ -215,6 +217,7 @@ class CIRRDataset(Dataset):
                     new_triplets.append(triplet)
             self.triplets = new_triplets
 
+        print("break point 3")
         # get a mapping from image name to relative path
         with open(dataset_path / 'cirr' / 'image_splits' / f'split.rc2.{split}.json') as f:
             self.name_to_relpath = json.load(f)
