@@ -183,7 +183,6 @@ class CIRRDataset(Dataset):
         :param preprocess: function which preprocesses the image
         :param no_duplicates: if True, the dataset will not yield duplicate images in relative mode, does not affect classic mode
         """
-        print("break point 0")
         dataset_path = Path(dataset_path)
         self.dataset_path = dataset_path
         self.preprocess = preprocess
@@ -195,7 +194,6 @@ class CIRRDataset(Dataset):
         if split == "test":
             split = "test1"
             self.split = "test1"
-        print("break point 1")
 
         # Validate inputs
         if split not in ['test1', 'train', 'val']:
@@ -207,7 +205,6 @@ class CIRRDataset(Dataset):
         with open(dataset_path / 'cirr' / 'captions' / f'cap.rc2.{split}.json') as f:
             self.triplets = json.load(f)
 
-        print("break point 2")
         # Remove duplicates from triplets
         if self.no_duplicates:
             seen = set()
@@ -218,7 +215,6 @@ class CIRRDataset(Dataset):
                     new_triplets.append(triplet)
             self.triplets = new_triplets
 
-        print("break point 3")
         # get a mapping from image name to relative path
         with open(dataset_path / 'cirr' / 'image_splits' / f'split.rc2.{split}.json') as f:
             self.name_to_relpath = json.load(f)
@@ -226,7 +222,6 @@ class CIRRDataset(Dataset):
         print(f"CIRR {split} dataset in {mode} mode initialized")
 
     def __getitem__(self, index) -> dict:
-        print("get item")
         try:
             if self.mode == 'relative':
                 group_members = self.triplets[index]['img_set']['members']
