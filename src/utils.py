@@ -80,27 +80,39 @@ def extract_image_features(device: torch.device, args: argparse.Namespace, datas
                 index_names.extend(names)
                 if index_rank is not None:
                     index_ranks.extend(index_rank)
+
+                # TODO: change here. DONE
                 if len(aux_data):
-                    # TODO: change here. DONE
-                    # aux_data['ref_features'].append(
-                    #     clip_model.encode_image(ref_images.to(device)).cpu())
                     aux_data['ref_features'].append(clip_model.get_image_features(
-                        **clip_processor(images=ref_images.to(device), return_tensors="pt")).cpu())
-
-                    # TODO: change here. DONE
-                    if hasattr(clip_model, 'tokenizer'):
+                        **clip_processor(images=ref_images.to(device), return_tensors="pt", padding=True)).cpu())
+                    if hasattr(clip_model, 'get_text_features'):
                         aux_data['instruct_features'].append(clip_model.get_text_features(
-                            **clip_processor(text=instructions, return_tensors="pt").to(device)).cpu())
-
-                        # aux_data['instruct_features'].append(clip_model.encode_text(
-                        #     clip_model.tokenizer(instructions, context_length=77).to(device)).cpu())
-                    # TODO: change here. DONE
+                            **clip_processor(text=instructions, return_tensors="pt", padding=True)).cpu())
                     else:
                         aux_data['instruct_features'].append(clip_model.get_text_features(
-                            **clip_processor(text=instructions, return_tensors="pt").to(device)).cpu())
+                            **clip_processor(text=instructions, return_tensors="pt", padding=True)).cpu())
 
-                        # aux_data['instruct_features'].append(clip_model.encode_text(
-                        #     clip.tokenize(instructions, context_length=77).to(device)).cpu())
+                # if len(aux_data):
+                #     # TODO: change here. DONE
+                #     # aux_data['ref_features'].append(
+                #     #     clip_model.encode_image(ref_images.to(device)).cpu())
+                #     aux_data['ref_features'].append(clip_model.get_image_features(
+                #         **clip_processor(images=ref_images.to(device), return_tensors="pt")).cpu())
+
+                #     # TODO: change here. DONE
+                #     if hasattr(clip_model, 'tokenizer'):
+                #         aux_data['instruct_features'].append(clip_model.get_text_features(
+                #             **clip_processor(text=instructions, return_tensors="pt").to(device)).cpu())
+
+                #         # aux_data['instruct_features'].append(clip_model.encode_text(
+                #         #     clip_model.tokenizer(instructions, context_length=77).to(device)).cpu())
+                #     # TODO: change here. DONE
+                #     else:
+                #         aux_data['instruct_features'].append(clip_model.get_text_features(
+                #             **clip_processor(text=instructions, return_tensors="pt").to(device)).cpu())
+
+                #         # aux_data['instruct_features'].append(clip_model.encode_text(
+                #         #     clip.tokenize(instructions, context_length=77).to(device)).cpu())
 
         index_features = torch.vstack(index_features)
 
@@ -189,7 +201,7 @@ def generate_predictions(
                 img = blip_image[i].unsqueeze(0)
                 inputs = blip_processor(
                     images=img, text=blip_prompt, return_tensors="pt").to(device)
-                caption = blip_model.generate(**inputs, max_length=40)
+                caption = blip_model.generate(**inputs, max_length=60)
                 decoded_caption = blip_processor.decode(
                     caption[0], skip_special_tokens=True)
                 captions.append(decoded_caption)
