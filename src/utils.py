@@ -54,6 +54,7 @@ def extract_image_features(device: torch.device, args: argparse.Namespace, datas
         # Extract features
         index_rank = None
         for batch in tqdm.tqdm(loader):
+            print("Hello world")
             if 'genecis' in args.dataset:
                 _, n_gallery, _, h, w = batch[3].size()
                 images = batch[3].view(-1, 3, h, w)
