@@ -24,8 +24,6 @@ class FashionIQDataset(Dataset):
             - ['reference_image', 'reference_name', 'relative_captions'] when split == test
     """
 
-    # def __init__(self, dataset_path: Union[Path, str], split: Literal['train', 'val', 'test'], dress_types: List[str],
-    #              mode: Literal['relative', 'classic'], preprocess: callable, no_duplicates: Optional[bool] = False,blip_transform: callable = None):
     def __init__(self, dataset_path: Union[Path, str], split: Literal['train', 'val', 'test'], dress_types: List[str],
                  mode: Literal['relative', 'classic'], preprocess: callable, no_duplicates: Optional[bool] = False, blip_transform: callable = None):
         """
@@ -40,6 +38,7 @@ class FashionIQDataset(Dataset):
                 - ['reference_image', 'reference_name', 'relative_captions'] when split == test
         :param preprocess: function which preprocesses the image
         :param no_duplicates: if True, the dataset will not yield duplicate images in relative mode, does not affect classic mode
+        :param blip_transform: function which preprocesses the image for mBLIP
         """
         dataset_path = Path(dataset_path)
         self.dataset_path = dataset_path
@@ -47,7 +46,7 @@ class FashionIQDataset(Dataset):
         self.dress_types = dress_types
         self.split = split
         self.no_duplicates = no_duplicates
-        self.blip_transform = blip_transform
+        self.blip_transform = blip_transform  # Added blip_transform
 
         # Validate the inputs
         if mode not in ['relative', 'classic']:
@@ -67,7 +66,7 @@ class FashionIQDataset(Dataset):
             with open(dataset_path / 'captions' / f'cap.{dress_type}.{split}.json') as f:
                 self.triplets.extend(json.load(f))
 
-        # Remove duplicats from
+        # Remove duplicates
         if self.no_duplicates:
             seen = set()
             new_triplets = []
@@ -102,10 +101,10 @@ class FashionIQDataset(Dataset):
                         'images' / f"{target_name}.png"
                     target_image = self.preprocess(
                         PIL.Image.open(target_image_path))
-                    blip_ref_img = self.blip_transform(
-                        PIL.Image.open(reference_image_path).convert('RGB'))
-                    blip_target_img = self.blip_transform(
-                        PIL.Image.open(target_image_path).convert('RGB'))
+                    blip_ref_img = self.blip_transform(PIL.Image.open(
+                        reference_image_path).convert('RGB'))  # Added blip_transform
+                    blip_target_img = self.blip_transform(PIL.Image.open(
+                        target_image_path).convert('RGB'))  # Added blip_transform
 
                     return {
                         'reference_image': reference_image,
@@ -122,8 +121,8 @@ class FashionIQDataset(Dataset):
                         'images' / f"{reference_name}.png"
                     reference_image = self.preprocess(
                         PIL.Image.open(reference_image_path))
-                    blip_ref_img = self.blip_transform(
-                        PIL.Image.open(reference_image_path).convert('RGB'))
+                    blip_ref_img = self.blip_transform(PIL.Image.open(
+                        reference_image_path).convert('RGB'))  # Added blip_transform
 
                     return {
                         'reference_image': reference_image,
@@ -136,8 +135,8 @@ class FashionIQDataset(Dataset):
                 image_name = self.image_names[index]
                 image_path = self.dataset_path / 'images' / f"{image_name}.png"
                 image = self.preprocess(PIL.Image.open(image_path))
-                blip_img = self.blip_transform(
-                    PIL.Image.open(image_path).convert('RGB'))
+                blip_img = self.blip_transform(PIL.Image.open(
+                    image_path).convert('RGB'))  # Added blip_transform
                 return {
                     'image': image,
                     'blip_img': blip_img,
@@ -182,6 +181,7 @@ class CIRRDataset(Dataset):
                     - ['reference_image', 'reference_name' 'relative_caption', 'group_members', 'pair_id'] when split == test
         :param preprocess: function which preprocesses the image
         :param no_duplicates: if True, the dataset will not yield duplicate images in relative mode, does not affect classic mode
+        :param blip_transform: function which preprocesses the image for mBLIP
         """
         dataset_path = Path(dataset_path)
         self.dataset_path = dataset_path
@@ -189,7 +189,7 @@ class CIRRDataset(Dataset):
         self.mode = mode
         self.split = split
         self.no_duplicates = no_duplicates
-        self.blip_transform = blip_transform
+        self.blip_transform = blip_transform  # Added blip_transform
 
         if split == "test":
             split = "test1"
@@ -238,8 +238,8 @@ class CIRRDataset(Dataset):
                         self.name_to_relpath[target_hard_name]
                     target_image = self.preprocess(
                         PIL.Image.open(target_image_path))
-                    blip_ref_img = self.blip_transform(
-                        PIL.Image.open(reference_image_path).convert('RGB'))
+                    blip_ref_img = self.blip_transform(PIL.Image.open(
+                        reference_image_path).convert('RGB'))  # Added blip_transform
                     return {
                         'reference_image': reference_image,
                         'blip_ref_img': blip_ref_img,
@@ -256,8 +256,8 @@ class CIRRDataset(Dataset):
                         self.name_to_relpath[reference_name]
                     reference_image = self.preprocess(
                         PIL.Image.open(reference_image_path))
-                    blip_ref_img = self.blip_transform(
-                        PIL.Image.open(reference_image_path).convert('RGB'))
+                    blip_ref_img = self.blip_transform(PIL.Image.open(
+                        reference_image_path).convert('RGB'))  # Added blip_transform
                     return {
                         'reference_image': reference_image,
                         'blip_ref_img': blip_ref_img,
@@ -273,9 +273,11 @@ class CIRRDataset(Dataset):
                     self.name_to_relpath[image_name]
                 im = PIL.Image.open(image_path)
                 image = self.preprocess(im)
-
+                blip_img = self.blip_transform(
+                    im.convert('RGB'))  # Added blip_transform
                 return {
                     'image': image,
+                    'blip_img': blip_img,
                     'image_name': image_name
                 }
 
@@ -313,6 +315,7 @@ class CIRCODataset(Dataset):
             split (str): dataset split, should be in ['test', 'val']
             mode (str): dataset mode, should be in ['relative', 'classic']
             preprocess (callable): function which preprocesses the image
+            blip_transform (callable): function which preprocesses the image for mBLIP
         """
 
         # Set dataset paths and configurations
@@ -321,12 +324,12 @@ class CIRCODataset(Dataset):
         self.split = split
         self.preprocess = preprocess
         self.data_path = dataset_path
-        self.blip_transform = blip_transform
+        self.blip_transform = blip_transform  # Added blip_transform
 
         # Ensure input arguments are valid
         if mode not in ['relative', 'classic']:
             raise ValueError("mode should be in ['relative', 'classic']")
-        if split not in ['test', 'val', 'test_gt']:
+        if split not in ['test', 'val']:
             raise ValueError("split should be in ['test', 'val']")
 
         # Load COCO images information
@@ -388,8 +391,8 @@ class CIRCODataset(Dataset):
             reference_img_id = str(self.annotations[index]['reference_img_id'])
             reference_img_path = self.img_paths[self.img_ids_indexes_map[reference_img_id]]
             reference_img = self.preprocess(PIL.Image.open(reference_img_path))
-            blip_ref_img = self.blip_transform(
-                PIL.Image.open(reference_img_path).convert('RGB'))
+            blip_ref_img = self.blip_transform(PIL.Image.open(
+                reference_img_path).convert('RGB'))  # Added blip_transform
 
             if self.split == 'val':
                 # Get the target image and ground truth images
@@ -432,8 +435,11 @@ class CIRCODataset(Dataset):
 
             # Preprocess image and return
             img = self.preprocess(PIL.Image.open(img_path))
+            blip_img = self.blip_transform(PIL.Image.open(
+                img_path).convert('RGB'))  # Added blip_transform
             return {
                 'image': img,
+                'blip_img': blip_img,
                 'image_name': img_id
             }
 
@@ -459,14 +465,13 @@ class COCODataset(Dataset):
 
         self.root_dir = root_dir
         self.transform = transform
-        self.blip_transform = blip_transform
+        self.blip_transform = blip_transform  # Added blip_transform
 
     def load_blip_sample(self, sample):
-
         val_img_id = sample['val_image_id']
         fpath = os.path.join(self.root_dir, f'{val_img_id:012d}.jpg')
         orig_img = PIL.Image.open(fpath)
-        img = self.blip_transform(orig_img)
+        img = self.blip_transform(orig_img)  # Added blip_transform
         return img
 
     def load_sample(self, sample):
@@ -504,7 +509,8 @@ class COCOValSubset(COCODataset):
         caption = sample['condition']
         reference = self.load_sample(orig_reference)
         target = self.load_sample(target)
-        blip_ref_img = self.load_blip_sample(orig_reference)
+        blip_ref_img = self.load_blip_sample(
+            orig_reference)  # Added blip_transform
         gallery = [self.load_sample(i) for i in gallery]
 
         if self.transform is not None:
@@ -517,29 +523,10 @@ class COCOValSubset(COCODataset):
             caption = self.tokenizer(caption)
 
         # By construction, target_rank = 0
-        return reference, caption, blip_ref_img, gallery_and_target, 0
+        return reference, caption, blip_ref_img, gallery_and_target, 0  # Added blip_ref_img
 
     def __len__(self):
         return len(self.val_samples)
-
-
-DILATION = 0.7
-PAD_CROP = True
-
-
-def expand2square(pil_img, background_color=(0, 0, 0)):
-    width, height = pil_img.size
-    if width == height:
-        return pil_img
-    elif width > height:
-        result = PIL.Image.new(pil_img.mode, (width, width), background_color)
-        result.paste(pil_img, (0, (width - height) // 2))
-        return result
-    else:
-        result = PIL.Image.new(
-            pil_img.mode, (height, height), background_color)
-        result.paste(pil_img, ((height - width) // 2, 0))
-        return result
 
 
 class VAWDataset(Dataset):
@@ -549,12 +536,11 @@ class VAWDataset(Dataset):
 
         self.image_dir = image_dir
         self.transform = transform
-        self.blip_transform = blip_transform
+        self.blip_transform = blip_transform  # Added blip_transform
         self.dilate = DILATION
         self.pad_crop = PAD_CROP
 
     def load_cropped_image(self, img):
-
         image_id = img['image_id']
         bbox = img['instance_bbox']
 
@@ -594,7 +580,7 @@ class VAWDataset(Dataset):
 
     def load_blip_sample(self, sample):
         im = self.load_cropped_image(sample)
-        im = self.blip_transform(im)
+        im = self.blip_transform(im)  # Added blip_transform
         return im
 
 
@@ -623,7 +609,8 @@ class VAWValSubset(VAWDataset):
         caption = sample['condition']
         reference = self.load_sample(orig_reference)
         target = self.load_sample(target)
-        blip_ref_img = self.load_blip_sample(orig_reference)
+        blip_ref_img = self.load_blip_sample(
+            orig_reference)  # Added blip_transform
         gallery = [self.load_sample(i) for i in gallery]
 
         if self.transform is not None:
@@ -636,7 +623,27 @@ class VAWValSubset(VAWDataset):
             caption = self.tokenizer(caption)
 
         # By construction, target_rank = 0
-        return reference, caption, blip_ref_img, gallery_and_target, 0
+        return reference, caption, blip_ref_img, gallery_and_target, 0  # Added blip_ref_img
 
     def __len__(self):
         return len(self.val_samples)
+
+
+# Constants used in VAWDataset
+DILATION = 0.7
+PAD_CROP = True
+
+
+def expand2square(pil_img, background_color=(0, 0, 0)):
+    width, height = pil_img.size
+    if width == height:
+        return pil_img
+    elif width > height:
+        result = PIL.Image.new(pil_img.mode, (width, width), background_color)
+        result.paste(pil_img, (0, (width - height) // 2))
+        return result
+    else:
+        result = PIL.Image.new(
+            pil_img.mode, (height, height), background_color)
+        result.paste(pil_img, ((height - width) // 2, 0))
+        return result

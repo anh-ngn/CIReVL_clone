@@ -1,6 +1,6 @@
 import utils
 import prompts
-import datasets
+import datasets_bak0
 import data_utils
 import compute_results
 import os
@@ -289,7 +289,7 @@ def main():
     if "fashioniq" in args.dataset.lower():
         dress_type = args.dataset.split("_")[-1]
         target_datasets.append(
-            datasets.FashionIQDataset(
+            datasets_bak0.FashionIQDataset(
                 args.dataset_path,
                 args.split,
                 [dress_type],
@@ -299,7 +299,7 @@ def main():
             )
         )
         query_datasets.append(
-            datasets.FashionIQDataset(
+            datasets_bak0.FashionIQDataset(
                 args.dataset_path,
                 args.split,
                 [dress_type],
@@ -314,7 +314,7 @@ def main():
     elif args.dataset.lower() == "cirr":
         split = "test1" if args.split == "test" else args.split
         target_datasets.append(
-            datasets.CIRRDataset(
+            datasets_bak0.CIRRDataset(
                 args.dataset_path,
                 split,
                 "classic",
@@ -323,7 +323,7 @@ def main():
             )
         )
         query_datasets.append(
-            datasets.CIRRDataset(
+            datasets_bak0.CIRRDataset(
                 args.dataset_path,
                 split,
                 "relative",
@@ -336,7 +336,7 @@ def main():
 
     elif args.dataset.lower() == "circo":
         target_datasets.append(
-            datasets.CIRCODataset(
+            datasets_bak0.CIRCODataset(
                 args.dataset_path,
                 args.split,
                 "classic",
@@ -345,7 +345,7 @@ def main():
             )
         )
         query_datasets.append(
-            datasets.CIRCODataset(
+            datasets_bak0.CIRCODataset(
                 args.dataset_path,
                 args.split,
                 "relative",
@@ -365,7 +365,7 @@ def main():
 
         if "object" in args.dataset.lower():
             datapath = os.path.join(args.dataset_path, "coco2017", "val2017")
-            genecis_dataset = datasets.COCOValSubset(
+            genecis_dataset = datasets_bak0.COCOValSubset(
                 root_dir=datapath,
                 val_split_path=prop_file,
                 transform=preprocess,
@@ -374,7 +374,7 @@ def main():
         elif "attribute" in args.dataset.lower():
             datapath = os.path.join(
                 args.dataset_path, "Visual_Genome", "VG_All")
-            genecis_dataset = datasets.VAWValSubset(
+            genecis_dataset = datasets_bak0.VAWValSubset(
                 image_dir=datapath,
                 val_split_path=prop_file,
                 transform=preprocess,
