@@ -3,7 +3,7 @@ import os
 from typing import Optional, Tuple, List, Dict, Union
 
 import argparse
-import clip
+# import clip
 import numpy as np
 import openai_api
 import pickle
