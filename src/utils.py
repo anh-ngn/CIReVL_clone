@@ -3,7 +3,8 @@ import os
 from typing import Optional, Tuple, List, Dict, Union
 
 import argparse
-import clip
+# import clip
+from models.SigLIP import SigLIP as custom_clip
 import numpy as np
 import openai_api
 import pickle
@@ -20,7 +21,7 @@ else:
 
 
 @torch.no_grad()
-def extract_image_features(device: torch.device, args: argparse.Namespace, dataset: torch.utils.data.Dataset, clip_model: clip.model.CLIP, batch_size: Optional[int] = 32,
+def extract_image_features(device: torch.device, args: argparse.Namespace, dataset: torch.utils.data.Dataset, custom_clip_model, batch_size: Optional[int] = 32,
                            num_workers: Optional[int] = 8, preload: str = None, **kwargs) -> Tuple[torch.Tensor, List[str]]:
     """
     Extracts image features from a dataset using a CLIP model.
@@ -65,20 +66,23 @@ def extract_image_features(device: torch.device, args: argparse.Namespace, datas
 
             images = images.to(device)
             with torch.no_grad(), torch.cuda.amp.autocast():
-                batch_features = clip_model.encode_image(images)
+                batch_features = custom_clip_model.encode_image(images)
                 index_features.append(batch_features.cpu())
                 index_names.extend(names)
                 if index_rank is not None:
                     index_ranks.extend(index_rank)
+                # TODO: change here. DONE
                 if len(aux_data):
                     aux_data['ref_features'].append(
-                        clip_model.encode_image(ref_images.to(device)).cpu())
-                    if hasattr(clip_model, 'tokenizer'):
-                        aux_data['instruct_features'].append(clip_model.encode_text(
-                            clip_model.tokenizer(instructions, context_length=77).to(device)).cpu())
-                    else:
-                        aux_data['instruct_features'].append(clip_model.encode_text(
-                            clip.tokenize(instructions, context_length=77).to(device)).cpu())
+                        custom_clip_model.encode_image(ref_images.to(device)).cpu())
+                    aux_data['instruct_features'].append(custom_clip_model.encode_text(
+                        custom_clip_model.tokenizer(instructions, context_length=77).to(device)).cpu())
+                    # if hasattr(clip_model, 'tokenizer'):
+                    #     aux_data['instruct_features'].append(clip_model.encode_text(
+                    #         clip_model.tokenizer(instructions, context_length=77).to(device)).cpu())
+                    # else:
+                    #     aux_data['instruct_features'].append(clip_model.encode_text(
+                    #         clip.tokenize(instructions, context_length=77).to(device)).cpu())
 
         index_features = torch.vstack(index_features)
 
@@ -100,7 +104,7 @@ def extract_image_features(device: torch.device, args: argparse.Namespace, datas
 
 @torch.no_grad()
 def generate_predictions(
-    device: torch.device, args: argparse.Namespace, clip_model: clip.model.CLIP, blip_model: callable, query_dataset: torch.utils.data.Dataset, preload_dict: Dict[str, Union[str, None]], **kwargs
+    device: torch.device, args: argparse.Namespace, custom_clip_model, blip_model: callable, query_dataset: torch.utils.data.Dataset, preload_dict: Dict[str, Union[str, None]], **kwargs
 ) -> Tuple[torch.Tensor, List[str], list]:
     """
     Generates features predictions for the validation set of CIRCO
@@ -220,7 +224,7 @@ def generate_predictions(
 
     # Perform text-to-image retrieval based on the modified captions.
     predicted_features = text_encoding(
-        device, clip_model, modified_captions, batch_size=batch_size, mode=args.retrieval)
+        device, custom_clip_model, modified_captions, batch_size=batch_size, mode=args.retrieval)
 
     return {
         'predicted_features': predicted_features,
@@ -289,7 +293,7 @@ def get_recall(indices, targets):
 
 
 @torch.no_grad()
-def evaluate_genecis(device: torch.device, args: argparse.Namespace, clip_model: clip.model.CLIP, blip_model: callable, query_dataset: torch.utils.data.Dataset, preload_dict: Dict[str, Union[str, None]], topk: List[int] = [1, 2, 3], batch_size: int = 32, **kwargs):
+def evaluate_genecis(device: torch.device, args: argparse.Namespace, custom_clip_model, blip_model: callable, query_dataset: torch.utils.data.Dataset, preload_dict: Dict[str, Union[str, None]], topk: List[int] = [1, 2, 3], batch_size: int = 32, **kwargs):
     val_loader = torch.utils.data.DataLoader(
         dataset=query_dataset, batch_size=batch_size, num_workers=8,
         pin_memory=False, collate_fn=data_utils.collate_fn, shuffle=False)
@@ -303,7 +307,8 @@ def evaluate_genecis(device: torch.device, args: argparse.Namespace, clip_model:
         for batch in query_iterator:
             ref_img = batch[0].to(device)
             original_caption = batch[1]
-            caption = clip.tokenize(batch[1], context_length=77).to(device)
+            caption = custom_clip_model.tokenize(
+                batch[1], context_length=77).to(device)
             blip_ref_img = batch[2].to(device)
             gallery_set = batch[3].to(device)
             target_rank = batch[4].to(device)
@@ -312,8 +317,8 @@ def evaluate_genecis(device: torch.device, args: argparse.Namespace, clip_model:
             imgs_ = torch.cat([ref_img, gallery_set.view(-1, 3, h, w)], dim=0)
 
             # CLIP Encoding
-            all_img_feats = clip_model.encode_image(imgs_).float()
-            caption_feats = clip_model.encode_text(caption).float()
+            all_img_feats = custom_clip_model.encode_image(imgs_).float()
+            caption_feats = custom_clip_model.encode_text(caption).float()
 
             # BLIP Captioning
             captions = []
@@ -344,8 +349,8 @@ def evaluate_genecis(device: torch.device, args: argparse.Namespace, clip_model:
                 if description == "":
                     modified_captions.append(original_caption[i])
 
-            predicted_feature = torch.nn.functional.normalize(clip_model.encode_text(
-                clip.tokenize(modified_captions, context_length=77).to(device)))
+            predicted_feature = torch.nn.functional.normalize(custom_clip_model.encode_text(
+                custom_clip_model.tokenize(modified_captions, context_length=77).to(device)))
 
             # COMPUTE RECALL - Base Evaluation.
             ref_feats, gallery_feats = all_img_feats.split(
@@ -380,22 +385,27 @@ def evaluate_genecis(device: torch.device, args: argparse.Namespace, clip_model:
         return meters
 
 
-def text_encoding(device, clip_model, input_captions, batch_size=32, mode='default'):
+# TODO: change here
+def text_encoding(device, custom_clip_model, input_captions, batch_size=32, mode='default'):
     n_iter = int(np.ceil(len(input_captions)/batch_size))
     predicted_features = []
 
     for i in tqdm.trange(n_iter, position=0, desc='Encoding captions...'):
         captions_to_use = input_captions[i*batch_size:(i+1)*batch_size]
 
-        if hasattr(clip_model, 'tokenizer'):
-            tokenized_input_captions = clip_model.tokenizer(
-                captions_to_use, context_length=77).to(device)
-        else:
-            tokenized_input_captions = clip.tokenize(
-                captions_to_use, context_length=77, truncate=True).to(device)
+#  DONE: change here
+        tokenized_input_captions = custom_clip_model.tokenize(
+            captions_to_use, context_length=77, truncate=True).to(device)
+        # if hasattr(clip_model, 'tokenizer'):
+        #     tokenized_input_captions = clip_model.tokenizer(
+        #         captions_to_use, context_length=77).to(device)
+        # else:
+        #     tokenized_input_captions = custom_clip_model.tokenize(
+        #         captions_to_use, context_length=77, truncate=True).to(device)
         # input_captions = [f"a photo of $ that {caption}" for caption in relative_captions]
         # clip_text_features = encode_with_pseudo_tokens(clip_model, tokenized_input_captions, batch_tokens)
-        clip_text_features = clip_model.encode_text(tokenized_input_captions)
+        clip_text_features = custom_clip_model.encode_text(
+            tokenized_input_captions)
         predicted_features.append(clip_text_features)
     predicted_features = torch.vstack(predicted_features)
 

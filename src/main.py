@@ -5,6 +5,7 @@ import data_utils
 import compute_results
 import os
 from typing import List, Dict
+from models import SigLIP as custom_clip
 
 import argparse
 import numpy as np
@@ -104,43 +105,51 @@ def main():
             f'{args.blip_prompt.split(".")[-1]}_{args.llm_prompt.split(".")[-1]}_test_submission.json'
 
     # Load CLIP model, BLIP model & Preprocessing.
-    print(f'Loading CLIP {args.clip}... ', end='')
-
-    if args.clip in ['ViT-bigG-14', 'ViT-B-32', 'ViT-B-16', 'ViT-L-14', 'ViT-H-14', 'ViT-g-14']:
-        import open_clip
-        pretraining = {
-            'ViT-B-32': 'laion2b_s34b_b79k',
-            'ViT-B-16': 'laion2b_s34b_b88k',
-            'ViT-L-14': 'laion2b_s32b_b82k',
-            'ViT-H-14': 'laion2b_s32b_b79k',
-            'ViT-g-14': 'laion2b_s34b_b88k',
-            'ViT-bigG-14': 'laion2b_s39b_b160k'
-        }
-        if args.weight_path == '':
-            weight_path = os.path.join(
-                args.dataset_path, '..', 'weights', 'open_clip')
-        else:
-            weight_path = os.path.join(os.getcwd(), args.weight_path)
-        os.makedirs(weight_path, exist_ok=True)
-        clip_model, _, clip_preprocess = open_clip.create_model_and_transforms(
-            args.clip, pretrained=pretraining[args.clip], cache_dir=weight_path)
-        clip_model = clip_model.eval().requires_grad_(False).to(device)
-        tokenizer = open_clip.get_tokenizer(args.clip)
-        clip_model.tokenizer = tokenizer
-    else:
-        clip_model, clip_preprocess = clip.load(
-            args.clip, device=device, jit=False)
-        clip_model = clip_model.float().eval().requires_grad_(False).to(device)
-
-    print('Done.')
-
+    # TODO: change here. DONE
+    print(f'Loading custom CLIP {args.clip}... ', end='')
+    clip_model = custom_clip.SigLIP(device=device)
     if args.preprocess_type == 'targetpad':
         print('Target pad preprocess pipeline is used.')
-        preprocess = data_utils.targetpad_transform(
-            1.25, clip_preprocess.transforms[0].size)
+        preprocess = custom_clip.preprocess
     elif args.preprocess_type == 'clip':
         print('CLIP preprocess pipeline is used.')
-        preprocess = clip_preprocess
+        preprocess = custom_clip.preprocess
+
+    # if args.clip in ['ViT-bigG-14', 'ViT-B-32', 'ViT-B-16', 'ViT-L-14', 'ViT-H-14', 'ViT-g-14']:
+    #     import open_clip
+    #     pretraining = {
+    #         'ViT-B-32': 'laion2b_s34b_b79k',
+    #         'ViT-B-16': 'laion2b_s34b_b88k',
+    #         'ViT-L-14': 'laion2b_s32b_b82k',
+    #         'ViT-H-14': 'laion2b_s32b_b79k',
+    #         'ViT-g-14': 'laion2b_s34b_b88k',
+    #         'ViT-bigG-14': 'laion2b_s39b_b160k'
+    #     }
+    #     if args.weight_path == '':
+    #         weight_path = os.path.join(
+    #             args.dataset_path, '..', 'weights', 'open_clip')
+    #     else:
+    #         weight_path = os.path.join(os.getcwd(), args.weight_path)
+    #     os.makedirs(weight_path, exist_ok=True)
+    #     clip_model, _, clip_preprocess = open_clip.create_model_and_transforms(
+    #         args.clip, pretrained=pretraining[args.clip], cache_dir=weight_path)
+    #     clip_model = clip_model.eval().requires_grad_(False).to(device)
+    #     tokenizer = open_clip.get_tokenizer(args.clip)
+    #     clip_model.tokenizer = tokenizer
+    # else:
+    #     clip_model, clip_preprocess = clip.load(
+    #         args.clip, device=device, jit=False)
+    #     clip_model = clip_model.float().eval().requires_grad_(False).to(device)
+
+    # print('Done.')
+
+    # if args.preprocess_type == 'targetpad':
+    #     print('Target pad preprocess pipeline is used.')
+    #     preprocess = data_utils.targetpad_transform(
+    #         1.25, clip_preprocess.transforms[0].size)
+    # elif args.preprocess_type == 'clip':
+    #     print('CLIP preprocess pipeline is used.')
+    #     preprocess = clip_preprocess
 
     blip_model = None
     if preload_dict['captions'] is None or not os.path.exists(preload_dict['captions']):
@@ -209,6 +218,7 @@ def main():
             f'\n------ Evaluating Retrieval Setup: {pairing}', color='yellow', attrs=['bold'])
 
         # General Input Arguments.
+        # TODO: here
         input_kwargs = {
             'args': args, 'query_dataset': query_dataset, 'target_dataset': target_dataset, 'clip_model': clip_model,
             'blip_model': blip_model, 'preprocess': preprocess, 'device': device, 'split': args.split,
