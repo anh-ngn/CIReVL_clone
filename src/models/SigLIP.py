@@ -14,8 +14,11 @@ class SigLIP:
     def __init__(self, model_name: str = "google/siglip-base-patch16-256-multilingual", device: Union[str, torch.device] = "cuda"):
         self.device = torch.device(
             device if torch.cuda.is_available() else "cpu")
+        # self.processor = AutoProcessor.from_pretrained(
+        #     "google/siglip-base-patch16-256-multilingual")
         self.processor = AutoProcessor.from_pretrained(
             "google/siglip-base-patch16-256-multilingual")
+
         self.model = AutoModel.from_pretrained(
             "google/siglip-base-patch16-256-multilingual").to(self.device)
 
