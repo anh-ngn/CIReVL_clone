@@ -14,7 +14,8 @@ class SigLIP:
     def __init__(self, model_name: str = "google/siglip-base-patch16-256-multilingual", device: Union[str, torch.device] = "cuda"):
         self.device = torch.device(
             device if torch.cuda.is_available() else "cpu")
-        self.processor = AutoProcessor.from_pretrained(model_name)
+        self.processor = AutoProcessor.from_pretrained(
+            "google/siglip-base-patch16-256-multilingual")
         self.model = AutoModel.from_pretrained(model_name).to(self.device)
 
     def encode_image(self, images: torch.Tensor):
