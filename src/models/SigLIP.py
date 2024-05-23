@@ -16,7 +16,8 @@ class SigLIP:
             device if torch.cuda.is_available() else "cpu")
         self.processor = AutoProcessor.from_pretrained(
             "google/siglip-base-patch16-256-multilingual")
-        self.model = AutoModel.from_pretrained(model_name).to(self.device)
+        self.model = AutoModel.from_pretrained(
+            "google/siglip-base-patch16-256-multilingual").to(self.device)
 
     def encode_image(self, images: torch.Tensor):
         image_inputs = self.processor(
