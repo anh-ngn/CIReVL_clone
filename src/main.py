@@ -6,6 +6,7 @@ import compute_results
 import os
 from typing import List, Dict
 from models import SigLIP as custom_clip
+import lavis
 
 import argparse
 import numpy as np
