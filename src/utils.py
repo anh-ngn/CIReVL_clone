@@ -4,7 +4,7 @@ from typing import Optional, Tuple, List, Dict, Union
 
 import argparse
 # import clip
-from models.SigLIP import SigLIP as custom_clip
+from models.altCLIP import altCLIP as custom_clip
 import numpy as np
 import openai_api
 import pickle

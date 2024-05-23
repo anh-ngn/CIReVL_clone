@@ -5,7 +5,7 @@ import data_utils
 import compute_results
 import os
 from typing import List, Dict
-from models import SigLIP as custom_clip
+from models import altCLIP as custom_clip
 import lavis
 
 import argparse
@@ -108,7 +108,7 @@ def main():
     # Load CLIP model, BLIP model & Preprocessing.
     # TODO: change here. DONE
     print(f'Loading custom CLIP {args.clip}... ', end='')
-    clip_model = custom_clip.SigLIP(device=device)
+    clip_model = custom_clip.altCLIP(device=device)
     if args.preprocess_type == 'targetpad':
         print('Target pad preprocess pipeline is used.')
         preprocess = custom_clip.preprocess
